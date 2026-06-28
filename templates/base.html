@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Anthem MRF Explorer{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: #f3f4f6;
+      color: #111827;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: .75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+    header .brand { font-size: 1rem; font-weight: 700; color: #fff; text-decoration: none; letter-spacing: .01em; }
+    header nav { display: flex; gap: 1rem; }
+    header nav a { color: rgba(255,255,255,.8); text-decoration: none; font-size: .875rem; }
+    header nav a:hover { color: #fff; }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; }
+
+    /* ── Cards ── */
+    .card {
+      background: #fff;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card-title { font-size: 1rem; font-weight: 600; color: #1e3a5f; margin-bottom: 1rem; }
+
+    /* ── Stats grid ── */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+    .stat { background: #fff; border-radius: 6px; padding: 1rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); text-align: center; }
+    .stat .num { font-size: 1.6rem; font-weight: 700; color: #1e3a5f; }
+    .stat .lbl { font-size: .75rem; color: #6b7280; margin-top: .2rem; }
+
+    /* ── Search form ── */
+    .search-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-end; }
+    .search-form input[type=text] {
+      padding: .4rem .65rem; border: 1px solid #d1d5db; border-radius: 4px;
+      font-size: .9rem; width: 300px; outline: none;
+    }
+    .search-form input[type=text]:focus { border-color: #1e3a5f; box-shadow: 0 0 0 2px rgba(30,58,95,.15); }
+    .search-form select {
+      padding: .4rem .65rem; border: 1px solid #d1d5db; border-radius: 4px;
+      font-size: .9rem; background: #fff; outline: none; cursor: pointer;
+    }
+    .search-form button {
+      padding: .4rem 1rem; background: #1e3a5f; color: #fff; border: none;
+      border-radius: 4px; font-size: .9rem; cursor: pointer; font-weight: 500;
+    }
+    .search-form button:hover { background: #2d5380; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th {
+      background: #f9fafb; text-align: left; padding: .5rem .75rem;
+      border-bottom: 2px solid #e5e7eb; white-space: nowrap; font-weight: 600; color: #374151;
+    }
+    td { padding: .45rem .75rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f9fafb; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block; padding: .1rem .45rem; border-radius: 3px;
+      font-size: .72rem; font-weight: 600; white-space: nowrap;
+    }
+    .badge-group      { background: #dbeafe; color: #1e40af; }
+    .badge-individual { background: #d1fae5; color: #065f46; }
+    .badge-ein        { background: #f3f4f6; color: #374151; }
+    .badge-hios       { background: #fef3c7; color: #92400e; }
+
+    /* ── Conformance notices ── */
+    .notice { padding: .5rem .75rem; border-radius: 4px; margin-bottom: .5rem; font-size: .84rem; }
+    .notice-pass { background: #d1fae5; color: #065f46; border-left: 3px solid #10b981; }
+    .notice-warn { background: #fef9c3; color: #713f12; border-left: 3px solid #f59e0b; }
+    .notice-info { background: #e0f2fe; color: #0c4a6e; border-left: 3px solid #0ea5e9; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; gap: .35rem; margin-top: 1rem; flex-wrap: wrap; }
+    .pagination a, .pagination span {
+      display: inline-block; padding: .3rem .6rem; border: 1px solid #d1d5db;
+      border-radius: 4px; font-size: .84rem; text-decoration: none; color: #374151;
+    }
+    .pagination a:hover { background: #f3f4f6; }
+    .pagination .current { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
+    .pagination .disabled { color: #9ca3af; pointer-events: none; }
+
+    /* ── Misc ── */
+    a { color: #1e3a5f; }
+    a:hover { text-decoration: underline; }
+    .muted { color: #6b7280; }
+    .mono  { font-family: "Cascadia Code", "Consolas", monospace; font-size: .8rem; }
+    .url-cell { word-break: break-all; }
+    .domain-list { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .domain-chip {
+      padding: .2rem .55rem; background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 20px; font-size: .78rem; color: #1e40af; text-decoration: none;
+    }
+    .domain-chip:hover { background: #dbeafe; text-decoration: none; }
+    dl.detail-grid { display: grid; grid-template-columns: 180px 1fr; gap: .35rem .75rem; font-size: .875rem; }
+    dl.detail-grid dt { font-weight: 600; color: #6b7280; }
+    .result-count { color: #6b7280; font-size: .875rem; margin-bottom: .75rem; }
+  </style>
+</head>
+<body>
+<header>
+  <a href="/" class="brand">Anthem MRF Explorer</a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/search?q=&field=sponsor">Plans</a>
+    <a href="/network-files">Network Files</a>
+    <a href="/colorado">Colorado</a>
+  </nav>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

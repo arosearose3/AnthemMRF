@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.plan_name or 'Plan Detail' }} — Anthem MRF Explorer{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-title">
+    {{ plan.plan_name or '(unnamed plan)' }}
+    <span class="badge badge-{{ plan.plan_market_type or '' }}" style="margin-left:.5rem">{{ plan.plan_market_type or '' }}</span>
+  </div>
+  <dl class="detail-grid">
+    <dt>Sponsor</dt>      <dd>{{ plan.plan_sponsor_name or '<span class="muted">—</span>' }}</dd>
+    <dt>Plan ID</dt>      <dd class="mono">{{ plan.plan_id or '' }} <span class="badge badge-{{ plan.plan_id_type | lower if plan.plan_id_type else '' }}">{{ plan.plan_id_type or '' }}</span></dd>
+    <dt>Issuer</dt>       <dd>{{ plan.issuer_name or '<span class="muted">—</span>' }}</dd>
+    <dt>RS Index</dt>     <dd class="mono muted">{{ plan.rs_idx }}</dd>
+  </dl>
+</div>
+
+{% if siblings %}
+<div class="card">
+  <div class="card-title">Other Plans in Same Reporting Structure ({{ siblings | length }})</div>
+  <table>
+    <thead><tr><th>Plan Name</th><th>Plan ID</th><th>Market</th></tr></thead>
+    <tbody>
+    {% for s in siblings %}
+    <tr>
+      <td><a href="/plan/{{ s.id }}">{{ s.plan_name or '(unnamed)' }}</a></td>
+      <td class="mono">{{ s.plan_id or '' }}</td>
+      <td><span class="badge badge-{{ s.plan_market_type or '' }}">{{ s.plan_market_type or '' }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">Network Files ({{ network_files | length }})</div>
+
+  {% if not network_files %}
+    <p class="muted">No network files linked to this reporting structure entry.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Domain</th>
+          <th>File</th>
+          <th>Download</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for nf in network_files %}
+      <tr>
+        <td>{{ nf.description or '' }}</td>
+        <td class="muted mono" style="white-space:nowrap">{{ nf.domain }}</td>
+        <td class="mono muted">{{ nf.url_path.split('/')[-1] if nf.url_path else '' }}</td>
+        <td>
+          {% if nf.url %}
+            <a href="{{ nf.url }}" target="_blank" rel="noopener">↓ gz</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+{% endblock %}

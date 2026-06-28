@@ -1,0 +1,23 @@
+# Large data files
+data/
+2026-*/
+*.json.gz
+*.db
+*.db-shm
+*.db-wal
+discovery_report.json
+
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Logs / temp
+*.log
+app_run.log

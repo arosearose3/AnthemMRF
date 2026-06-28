@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Anthem MRF Explorer{% endblock %}
+{% block content %}
+
+<div class="stat-grid">
+  <div class="stat">
+    <div class="num">{{ "{:,}".format(stats.plan_count) }}</div>
+    <div class="lbl">Plans</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ "{:,}".format(stats.nf_count) }}</div>
+    <div class="lbl">Unique Network Files</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ "{:,}".format(stats.rs_count) }}</div>
+    <div class="lbl">Reporting Structures</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Search Plans</div>
+  <form action="/search" method="get" class="search-form">
+    <input type="text" name="q" placeholder="Search..." autofocus>
+    <select name="field">
+      <option value="sponsor">Plan Sponsor (Employer)</option>
+      <option value="name">Plan Name</option>
+      <option value="plan_id">Plan ID (EIN / HIOS)</option>
+    </select>
+    <select name="market">
+      <option value="">All Market Types</option>
+      <option value="group">Group</option>
+      <option value="individual">Individual</option>
+    </select>
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+
+  <div class="card">
+    <div class="card-title">Source File</div>
+    <dl class="detail-grid">
+      <dt>Entity</dt>       <dd>{{ stats.entity_name }}</dd>
+      <dt>Last Updated</dt> <dd>{{ stats.last_updated }}</dd>
+      <dt>Version</dt>      <dd>{{ stats.version }}</dd>
+      <dt>Index Built</dt>  <dd>{{ stats.built_at }}</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">CMS TiC v2.0.0 Conformance</div>
+    <div class="notice notice-pass">All required top-level fields present.</div>
+    <div class="notice notice-warn">
+      <strong>plan_name</strong> missing in 1,746 of 681,426 plans (0.3%).
+    </div>
+    <div class="notice notice-warn">
+      Anthem used <code>allowed_amount_file</code> (singular) instead of
+      <code>allowed_amount_files</code> (plural) — the spec key. Out-of-network
+      cost data is present under the wrong key and was not indexed.
+    </div>
+    <div class="notice notice-info">
+      URLs use CloudFront pre-signed auth. Expiry: ~June 2027. Links are currently valid.
+    </div>
+  </div>
+
+</div>
+
+<div class="card">
+  <div class="card-title">Network File Domains</div>
+  <table>
+    <thead><tr><th>Domain</th><th style="text-align:right">Unique Files</th></tr></thead>
+    <tbody>
+    {% for d in domains %}
+    <tr>
+      <td><a href="/network-files?domain={{ d.domain }}">{{ d.domain }}</a></td>
+      <td style="text-align:right">{{ "{:,}".format(d.cnt) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

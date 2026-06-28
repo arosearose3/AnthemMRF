@@ -1,0 +1,16 @@
+# Core
+ijson>=3.2.3
+tqdm>=4.66.0
+Flask>=3.0.0
+
+# Fast JSON parsing: Rust/SIMD, 3-10x speedup over ijson for provider_references
+orjson>=3.9.0
+
+# Fast gzip decompression (both installed, both active)
+isal>=1.1.0          # Intel ISA-L SIMD — 3-5x faster than stdlib gzip; drop-in for gzip.open()
+rapidgzip>=0.13.0    # parallel multi-threaded gzip — uses multiple cores per file
+
+# GPU note: NVIDIA nvcomp (conda install -c nvidia nvcomp) would offload decompression
+# to the RTX 5080 but has no pip wheel. cupy is installed and reaches the GPU for
+# future use but does not currently provide a gzip decompression API.
+# cupy-cuda12x

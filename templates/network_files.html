@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Network Files — Anthem MRF Explorer{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-title">Browse Network Files</div>
+
+  <form action="/network-files" method="get" class="search-form" style="margin-bottom:1rem">
+    <input type="text" name="desc" value="{{ desc }}" placeholder="Filter by description...">
+    <select name="domain">
+      <option value="">All Domains</option>
+      {% for d in domains %}
+      <option value="{{ d.domain }}" {% if d.domain == domain %}selected{% endif %}>
+        {{ d.domain }} ({{ "{:,}".format(d.cnt) }})
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    {% if domain or desc %}<a href="/network-files" style="padding:.4rem .6rem;color:#6b7280">Clear</a>{% endif %}
+  </form>
+
+  <div class="domain-list" style="margin-bottom:1rem">
+    {% for d in domains %}
+    <a href="/network-files?domain={{ d.domain }}" class="domain-chip"
+       {% if d.domain == domain %}style="background:#bfdbfe;font-weight:600"{% endif %}>
+      {{ d.domain.split('.')[0] }} ({{ "{:,}".format(d.cnt) }})
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="result-count">
+    {% if total == 0 %}
+      No network files match the current filter.
+    {% else %}
+      <strong>{{ "{:,}".format(total) }}</strong> unique file{{ 's' if total != 1 }}
+      {% if domain %} on <strong>{{ domain }}</strong>{% endif %}
+      {% if desc %} matching <strong>{{ desc }}</strong>{% endif %}
+      &nbsp;—&nbsp; page {{ page }} of {{ pages }}
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Domain</th>
+        <th>File</th>
+        <th>Download</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for nf in rows %}
+    <tr>
+      <td>{{ nf.description or '' }}</td>
+      <td class="muted mono" style="white-space:nowrap">{{ nf.domain }}</td>
+      <td class="mono muted url-cell">{{ nf.url_path.split('/')[-1] if nf.url_path else '' }}</td>
+      <td>
+        {% if nf.url %}
+          <a href="{{ nf.url }}" target="_blank" rel="noopener">↓ gz</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="/network-files?domain={{ domain }}&desc={{ desc }}&page={{ page - 1 }}">&larr; Prev</a>
+    {% else %}
+      <span class="disabled">&larr; Prev</span>
+    {% endif %}
+
+    {% for p in range([1, page - 3] | max, [pages + 1, page + 4] | min) %}
+      {% if p == page %}
+        <span class="current">{{ p }}</span>
+      {% else %}
+        <a href="/network-files?domain={{ domain }}&desc={{ desc }}&page={{ p }}">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page < pages %}
+      <a href="/network-files?domain={{ domain }}&desc={{ desc }}&page={{ page + 1 }}">Next &rarr;</a>
+    {% else %}
+      <span class="disabled">Next &rarr;</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

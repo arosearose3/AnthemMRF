@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Search — Anthem MRF Explorer{% endblock %}
+{% block content %}
+
+<div class="card">
+  <form action="/search" method="get" class="search-form">
+    <input type="text" name="q" value="{{ q }}" autofocus>
+    <select name="field">
+      <option value="sponsor" {% if field == 'sponsor' %}selected{% endif %}>Plan Sponsor (Employer)</option>
+      <option value="name"    {% if field == 'name'    %}selected{% endif %}>Plan Name</option>
+      <option value="plan_id" {% if field == 'plan_id' %}selected{% endif %}>Plan ID (EIN / HIOS)</option>
+    </select>
+    <select name="market">
+      <option value=""           {% if market == ''           %}selected{% endif %}>All Market Types</option>
+      <option value="group"      {% if market == 'group'      %}selected{% endif %}>Group</option>
+      <option value="individual" {% if market == 'individual' %}selected{% endif %}>Individual</option>
+    </select>
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="result-count">
+    {% if total == 0 %}
+      No results for <strong>{{ q }}</strong>.
+    {% else %}
+      <strong>{{ "{:,}".format(total) }}</strong> plan{{ 's' if total != 1 }}
+      matching <strong>{{ q }}</strong>
+      {% if market %} · {{ market }}{% endif %}
+      &nbsp;—&nbsp; page {{ page }} of {{ pages }}
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Plan Name</th>
+        <th>Sponsor</th>
+        <th>Plan ID</th>
+        <th>Type</th>
+        <th>Market</th>
+        <th>Issuer</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="/plan/{{ r.id }}">{{ r.plan_name or '(unnamed)' }}</a></td>
+      <td>{{ r.plan_sponsor_name or '' }}</td>
+      <td class="mono">{{ r.plan_id or '' }}</td>
+      <td><span class="badge badge-{{ r.plan_id_type | lower if r.plan_id_type else 'ein' }}">{{ r.plan_id_type or '' }}</span></td>
+      <td><span class="badge badge-{{ r.plan_market_type or '' }}">{{ r.plan_market_type or '' }}</span></td>
+      <td class="muted">{{ r.issuer_name or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="/search?q={{ q }}&field={{ field }}&market={{ market }}&page={{ page - 1 }}">&larr; Prev</a>
+    {% else %}
+      <span class="disabled">&larr; Prev</span>
+    {% endif %}
+
+    {% for p in range([1, page - 3] | max, [pages + 1, page + 4] | min) %}
+      {% if p == page %}
+        <span class="current">{{ p }}</span>
+      {% else %}
+        <a href="/search?q={{ q }}&field={{ field }}&market={{ market }}&page={{ p }}">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page < pages %}
+      <a href="/search?q={{ q }}&field={{ field }}&market={{ market }}&page={{ page + 1 }}">Next &rarr;</a>
+    {% else %}
+      <span class="disabled">Next &rarr;</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

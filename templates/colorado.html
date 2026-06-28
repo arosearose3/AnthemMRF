@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+{% block title %}Colorado Rate Data — Anthem MRF Explorer{% endblock %}
+{% block content %}
+
+<style>
+  .progress-bar-wrap { background:#e5e7eb; border-radius:4px; height:10px; overflow:hidden; margin:.5rem 0; }
+  .progress-bar-fill { background:#1e3a5f; height:100%; transition:width .4s ease; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:.4rem; }
+  .dot-done     { background:#10b981; }
+  .dot-active   { background:#f59e0b; animation:pulse 1s infinite; }
+  .dot-queued   { background:#94a3b8; }
+  .dot-error    { background:#ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #94a3b8;
+             border-top-color:#1e3a5f; border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .phase-badge { display:inline-block; padding:.15rem .5rem; border-radius:3px;
+                 font-size:.75rem; font-weight:600; }
+  .phase-downloading { background:#dbeafe; color:#1e40af; }
+  .phase-parsing     { background:#fef3c7; color:#92400e; }
+  .recent-row { display:flex; justify-content:space-between; align-items:baseline;
+                padding:.3rem 0; border-bottom:1px solid #f3f4f6; font-size:.84rem; }
+  .recent-row:last-child { border-bottom:none; }
+  .rate-table { font-size:.8rem; }
+  .rate-table td { padding:.3rem .6rem; }
+  .network-row { cursor:pointer; }
+  .network-row:hover td { background:#eff6ff; }
+  .big-btn { padding:.6rem 1.4rem; font-size:1rem; font-weight:600; }
+  .warn-box { background:#fef9c3; border:1px solid #fcd34d; border-radius:6px;
+              padding:.75rem 1rem; margin-bottom:1rem; font-size:.875rem; color:#713f12; }
+</style>
+
+<!-- ── Title ── -->
+<div class="card" style="margin-bottom:.75rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+    <div>
+      <div class="card-title" style="margin-bottom:.15rem">Colorado Rate Data</div>
+      <div class="muted" style="font-size:.84rem">Domain: anthembcbsco.mrf.bcbs.com</div>
+    </div>
+    <div id="worker-badge" style="font-size:.84rem">
+      {% if counts.worker_alive %}
+        <span class="status-dot dot-active"></span> Downloading in progress
+      {% elif counts.done > 0 and counts.queued == 0 and counts.active == 0 %}
+        <span class="status-dot dot-done"></span> {{ counts.done }} files ready
+      {% elif counts.done > 0 %}
+        <span class="status-dot dot-queued"></span> Paused — {{ counts.queued }} files remaining
+      {% else %}
+        <span class="status-dot dot-queued"></span> Not started
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Status cards ── -->
+<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:.75rem">
+  <div class="stat">
+    <div class="num" id="s-total">{{ "{:,}".format(counts.total) }}</div>
+    <div class="lbl">Total CO Files</div>
+  </div>
+  <div class="stat">
+    <div class="num" id="s-done" style="color:#10b981">{{ "{:,}".format(counts.done) }}</div>
+    <div class="lbl">Downloaded &amp; Parsed</div>
+  </div>
+  <div class="stat">
+    <div class="num" id="s-active" style="color:#f59e0b">{{ "{:,}".format(counts.active + counts.queued) }}</div>
+    <div class="lbl">Queued / Active</div>
+  </div>
+  <div class="stat">
+    <div class="num" id="s-error" style="color:#ef4444">{{ "{:,}".format(counts.errors) }}</div>
+    <div class="lbl">Errors</div>
+  </div>
+</div>
+
+<!-- ── Progress bar ── -->
+{% set pct = (counts.done / counts.total * 100) if counts.total > 0 else 0 %}
+{% if counts.done > 0 or counts.active > 0 or counts.queued > 0 %}
+<div class="card" style="padding:.9rem 1.25rem;margin-bottom:.75rem">
+  <div style="display:flex;justify-content:space-between;font-size:.84rem;margin-bottom:.35rem">
+    <span id="prog-label">{{ "{:,}".format(counts.done) }} / {{ "{:,}".format(counts.total) }} files</span>
+    <span id="prog-pct">{{ "%.1f"|format(pct) }}%</span>
+  </div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="prog-bar" style="width:{{ pct }}%"></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Active pipeline ── -->
+<div id="active-section" style="display:{{ 'block' if counts.active_phases else 'none' }};margin-bottom:.75rem">
+  <div class="card" style="padding:.9rem 1.25rem">
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <span class="spinner"></span>
+      <span id="active-dl" class="phase-badge phase-downloading">
+        {{ counts.active_phases.downloading if counts.active_phases else 0 }} downloading
+      </span>
+      <span id="active-parse" class="phase-badge phase-parsing">
+        {{ counts.active_phases.parsing if counts.active_phases else 0 }} parsing
+      </span>
+      <span class="muted" style="font-size:.78rem" id="worker-config">
+        {{ counts.workers.download }} download threads · {{ counts.workers.parse }} parse processes
+      </span>
+    </div>
+    <div style="margin-top:.5rem;font-size:.78rem;color:#6b7280" id="backend-status">
+      Parse: {% if counts.backends.orjson %}<strong style="color:#065f46">orjson</strong> (small files) + {% endif %}ijson streaming (large files)
+      &nbsp;·&nbsp;
+      Decompress: {% if counts.backends.isal %}<strong style="color:#065f46">isal SIMD</strong>{% else %}gzip{% endif %}{% if counts.backends.rapidgzip %} + <strong style="color:#065f46">rapidgzip parallel</strong>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Recent completions ── -->
+<div id="recent-section" style="display:{{ 'block' if counts.recent else 'none' }};margin-bottom:.75rem">
+  <div class="card" style="padding:.9rem 1.25rem">
+    <div class="card-title" style="margin-bottom:.5rem">Recently Completed</div>
+    <div id="recent-list">
+      {% for r in counts.recent %}
+      <div class="recent-row">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {{ r.description }}
+        </span>
+        <span class="muted" style="margin-left:1rem;white-space:nowrap;font-size:.78rem">
+          {{ "{:,}".format(r.pr_count) }} refs &nbsp;·&nbsp;
+          {{ "%.0f"|format(r.file_bytes / 1e6) }} MB
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Download controls ── -->
+{% if counts.done == 0 and not counts.worker_alive and counts.queued == 0 %}
+<div class="card" style="margin-bottom:.75rem">
+  <div class="card-title">Download Colorado Rate Files</div>
+  <div class="warn-box">
+    <strong>Before starting:</strong> There are <strong>{{ "{:,}".format(counts.total) }}</strong>
+    unique Colorado rate files. Each is typically 50 MB – 2 GB compressed.
+    Total download could be <strong>tens to hundreds of GB</strong>.
+    Downloads land in <code>data/co/</code>. The worker pauses 3 seconds between files
+    to reduce CPU load and avoid CDN throttling.
+  </div>
+  <form method="post" action="/colorado/start"
+        onsubmit="return confirm('Start downloading all {{ "{:,}".format(counts.total) }} Colorado rate files?')">
+    <button type="submit" class="big-btn">Start Download</button>
+  </form>
+</div>
+
+{% elif not counts.worker_alive and (counts.queued > 0 or counts.active > 0) %}
+<div class="card" style="margin-bottom:.75rem">
+  <div class="card-title">Resume Download</div>
+  <p style="margin-bottom:.75rem;font-size:.875rem">
+    Worker stopped. <strong>{{ "{:,}".format(counts.queued + counts.active) }}</strong>
+    files are still queued. Any file interrupted mid-download will be retried from scratch.
+  </p>
+  <form method="post" action="/colorado/start">
+    <button type="submit">Resume Download</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- ── NPI Lookup ── -->
+<div class="card" style="margin-bottom:.75rem">
+  <div class="card-title">NPI Provider Lookup</div>
+  {% if counts.done == 0 %}
+    <p class="muted">No files parsed yet. Download Colorado data first.</p>
+  {% else %}
+    <p style="font-size:.875rem;margin-bottom:.75rem">
+      Enter an NPI to find every Colorado network containing that provider,
+      then load negotiated rates on demand.
+    </p>
+    <div class="search-form" style="margin-bottom:0">
+      <input type="text" id="npi-input" placeholder="e.g. 1740837137"
+             maxlength="10" style="width:200px;font-family:monospace">
+      <button onclick="lookupNpi()">Look Up</button>
+      <span id="npi-spinner" style="display:none"><span class="spinner"></span></span>
+    </div>
+    <div id="npi-error" class="notice notice-warn" style="display:none;margin-top:.5rem"></div>
+  {% endif %}
+</div>
+
+<!-- ── NPI Results ── -->
+<div id="npi-results" style="display:none">
+  <div class="card">
+    <div class="card-title">
+      Networks containing NPI <span id="npi-display" style="font-family:monospace"></span>
+    </div>
+    <div id="npi-result-count" class="muted" style="margin-bottom:.75rem;font-size:.875rem"></div>
+    <table id="npi-table">
+      <thead>
+        <tr>
+          <th>Network Description</th>
+          <th>File</th>
+          <th style="text-align:right">Provider Refs</th>
+          <th style="text-align:right">File Size</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="npi-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Rates panel ── -->
+<div id="rates-panel" style="display:none">
+  <div class="card">
+    <div class="card-title">
+      Negotiated Rates —
+      <span id="rates-network" style="font-weight:400;font-size:.9rem"></span>
+    </div>
+    <div id="rates-loading" style="display:none;margin-bottom:.75rem">
+      <span class="spinner"></span>
+      <span style="margin-left:.5rem;font-size:.875rem">
+        Streaming rate file — may take several minutes for large files.
+      </span>
+    </div>
+    <div id="rates-warn" class="notice notice-warn" style="display:none;margin-bottom:.75rem"></div>
+    <div id="rates-error" class="notice notice-warn" style="display:none"></div>
+    <div id="rates-content" style="display:none">
+      <div id="rates-count" class="muted" style="margin-bottom:.5rem;font-size:.875rem"></div>
+      <table class="rate-table">
+        <thead>
+          <tr>
+            <th>Code</th><th>Type</th><th>Description</th>
+            <th>Rate Type</th><th style="text-align:right">Rate ($)</th>
+            <th>Billing Class</th><th>Service Code</th>
+          </tr>
+        </thead>
+        <tbody id="rates-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Error list ── -->
+{% if errors %}
+<div class="card" style="margin-top:.75rem">
+  <div class="card-title">Recent Errors</div>
+  <table>
+    <thead><tr><th>File</th><th>Error</th></tr></thead>
+    <tbody>
+    {% for e in errors %}
+    <tr>
+      <td class="mono muted" style="font-size:.78rem">{{ e.url_path.split('/')[-1] if e.url_path else '' }}</td>
+      <td style="font-size:.82rem;color:#dc2626">{{ e.error }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+const POLL_MS = 3000;
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch('/colorado/api/status');
+      const d = await r.json();
+      updateStats(d);
+      if (!d.worker_alive) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    } catch (e) { /* transient, ignore */ }
+  }, POLL_MS);
+}
+
+function fmtBytes(b) {
+  if (!b) return '';
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
+  return (b / 1e6).toFixed(0) + ' MB';
+}
+
+function updateStats(d) {
+  const fmt = n => Number(n).toLocaleString();
+
+  document.getElementById('s-total').textContent  = fmt(d.total);
+  document.getElementById('s-done').textContent   = fmt(d.done);
+  document.getElementById('s-active').textContent = fmt(d.active + d.queued);
+  document.getElementById('s-error').textContent  = fmt(d.errors);
+
+  const pct  = d.total > 0 ? (d.done / d.total * 100) : 0;
+  const bar  = document.getElementById('prog-bar');
+  const lbl  = document.getElementById('prog-label');
+  const plab = document.getElementById('prog-pct');
+  if (bar)  bar.style.width  = pct.toFixed(1) + '%';
+  if (lbl)  lbl.textContent  = fmt(d.done) + ' / ' + fmt(d.total) + ' files';
+  if (plab) plab.textContent = pct.toFixed(1) + '%';
+
+  const badge = document.getElementById('worker-badge');
+  if (badge) {
+    if (d.worker_alive)
+      badge.innerHTML = '<span class="status-dot dot-active"></span> Downloading in progress';
+    else if (d.done > 0 && d.queued === 0 && d.active === 0)
+      badge.innerHTML = '<span class="status-dot dot-done"></span> ' + fmt(d.done) + ' files ready';
+    else if (d.done > 0)
+      badge.innerHTML = '<span class="status-dot dot-queued"></span> Paused — ' + fmt(d.queued) + ' files remaining';
+    else
+      badge.innerHTML = '<span class="status-dot dot-queued"></span> Not started';
+  }
+
+  // Active pipeline counts
+  const as_ = document.getElementById('active-section');
+  if (d.active_phases && d.worker_alive) {
+    as_.style.display = 'block';
+    document.getElementById('active-dl').textContent    = (d.active_phases.downloading || 0) + ' downloading';
+    document.getElementById('active-parse').textContent = (d.active_phases.parsing    || 0) + ' parsing';
+    if (d.workers) {
+      document.getElementById('worker-config').textContent =
+        d.workers.download + ' download threads · ' + d.workers.parse + ' parse processes';
+    }
+    if (d.backends) {
+      const parse  = (d.backends.orjson ? 'orjson + ' : '') + 'ijson';
+      const decomp = [d.backends.isal ? 'isal SIMD' : 'gzip',
+                      d.backends.rapidgzip ? 'rapidgzip parallel' : ''].filter(Boolean).join(' + ');
+      document.getElementById('backend-status').textContent =
+        'Parse: ' + parse + '  ·  Decompress: ' + decomp;
+    }
+  } else {
+    as_.style.display = 'none';
+  }
+
+  // Recent completions log
+  const rs = document.getElementById('recent-section');
+  if (d.recent && d.recent.length > 0) {
+    rs.style.display = 'block';
+    document.getElementById('recent-list').innerHTML = d.recent.map(r =>
+      `<div class="recent-row">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description}</span>
+        <span class="muted" style="margin-left:1rem;white-space:nowrap;font-size:.78rem">
+          ${Number(r.pr_count).toLocaleString()} refs &nbsp;·&nbsp; ${fmtBytes(r.file_bytes)}
+        </span>
+      </div>`
+    ).join('');
+  } else {
+    rs.style.display = 'none';
+  }
+}
+
+{% if counts.worker_alive %}
+startPolling();
+{% endif %}
+
+// ── NPI Lookup ────────────────────────────────────────────────────────────────
+async function lookupNpi() {
+  const npi = document.getElementById('npi-input').value.trim();
+  if (!npi) return;
+
+  document.getElementById('npi-spinner').style.display = 'inline';
+  document.getElementById('npi-error').style.display   = 'none';
+  document.getElementById('npi-results').style.display = 'none';
+  document.getElementById('rates-panel').style.display = 'none';
+
+  try {
+    const r    = await fetch('/colorado/api/npi/' + encodeURIComponent(npi));
+    const rows = await r.json();
+    document.getElementById('npi-spinner').style.display = 'none';
+
+    if (rows.length === 0) {
+      const el = document.getElementById('npi-error');
+      el.textContent = 'NPI ' + npi + ' not found in any downloaded Colorado file.';
+      el.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('npi-display').textContent      = npi;
+    document.getElementById('npi-result-count').textContent =
+      rows.length + ' network' + (rows.length !== 1 ? 's' : '') + ' contain this provider.';
+
+    const tbody = document.getElementById('npi-tbody');
+    tbody.innerHTML = '';
+    rows.forEach(row => {
+      const filename = (row.url_path || '').split('/').pop();
+      const tr = document.createElement('tr');
+      tr.className = 'network-row';
+      tr.innerHTML = `
+        <td>${row.description || ''}</td>
+        <td class="mono muted" style="font-size:.78rem">${filename}</td>
+        <td style="text-align:right">${Number(row.pr_count).toLocaleString()}</td>
+        <td style="text-align:right">${fmtBytes(row.file_bytes)}</td>
+        <td>
+          <button onclick='loadRates("${npi}", ${row.nf_id}, "${row.url_path}",
+            "${(row.description||'').replace(/"/g,"&quot;")}", this)'
+            style="padding:.25rem .6rem;font-size:.8rem">Load Rates</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('npi-results').style.display = 'block';
+
+  } catch (e) {
+    document.getElementById('npi-spinner').style.display = 'none';
+    const el = document.getElementById('npi-error');
+    el.textContent = 'Request failed: ' + e.message;
+    el.style.display = 'block';
+  }
+}
+
+document.getElementById('npi-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') lookupNpi();
+});
+
+// ── Load Rates ────────────────────────────────────────────────────────────────
+async function loadRates(npi, nfId, urlPath, description, btn) {
+  const panel = document.getElementById('rates-panel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  document.getElementById('rates-network').textContent   = description;
+  document.getElementById('rates-loading').style.display = 'block';
+  document.getElementById('rates-content').style.display = 'none';
+  document.getElementById('rates-error').style.display   = 'none';
+  document.getElementById('rates-warn').style.display    = 'none';
+
+  if (btn) btn.disabled = true;
+
+  try {
+    const params = new URLSearchParams({ npi, nf_id: nfId, url_path: urlPath });
+    const r      = await fetch('/colorado/api/rates?' + params);
+    const d      = await r.json();
+
+    document.getElementById('rates-loading').style.display = 'none';
+
+    if (d.error) {
+      const el = document.getElementById('rates-error');
+      el.textContent = d.error;
+      el.style.display = 'block';
+      return;
+    }
+
+    if (d.truncated) {
+      const el = document.getElementById('rates-warn');
+      el.textContent = 'Showing first 300 rates. The full file may contain more for this provider.';
+      el.style.display = 'block';
+    }
+
+    const tbody = document.getElementById('rates-tbody');
+    tbody.innerHTML = '';
+    (d.rates || []).forEach(rt => {
+      const tr   = document.createElement('tr');
+      const rate = rt.negotiated_rate != null ? '$' + Number(rt.negotiated_rate).toFixed(2) : '';
+      tr.innerHTML = `
+        <td class="mono">${rt.billing_code}</td>
+        <td class="muted">${rt.billing_code_type}</td>
+        <td>${rt.name}</td>
+        <td>${rt.negotiated_type}</td>
+        <td style="text-align:right;font-weight:600">${rate}</td>
+        <td>${rt.billing_class}</td>
+        <td class="muted">${rt.service_code}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('rates-count').textContent =
+      (d.rates || []).length + ' rates' + (d.truncated ? ' (truncated at 300)' : '');
+    document.getElementById('rates-content').style.display = 'block';
+
+  } catch (e) {
+    document.getElementById('rates-loading').style.display = 'none';
+    const el = document.getElementById('rates-error');
+    el.textContent = 'Failed: ' + e.message;
+    el.style.display = 'block';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}
